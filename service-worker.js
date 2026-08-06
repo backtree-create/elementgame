@@ -1,13 +1,13 @@
-const CACHE_NAME = 'element-master-3d-v2'; // アイコン画像を修正したためバージョンを上げてキャッシュを入れ替える
+const CACHE_NAME = 'element-master-3d-v3'; // アイコンをフォルダなし構成に変更したためバージョンを上げる
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-512-maskable.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon-32.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png',
+  './apple-touch-icon.png',
+  './favicon-32.png',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
 ];
 

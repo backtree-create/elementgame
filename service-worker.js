@@ -1,4 +1,12 @@
-const CACHE_NAME = 'element-master-3d-v3'; // アイコンをフォルダなし構成に変更したためバージョンを上げる
+const CACHE_NAME = 'element-master-3d-v4'; // addAllの全滅バグを修正したためバージョンを上げる
+
+// 事前キャッシュするのは「同一オリジン（自分のリポジトリ内）」のファイルのみに限定する。
+// three.js のような外部CDNのURLをここに混ぜると、cache.addAll() は
+// 「1つでも取得に失敗したら全体が失敗する」という仕様のため、
+// 外部CDN側の一時的な失敗やCORSの都合でService Worker自体の
+// インストールが丸ごと失敗し、PWAとして正しくインストールできなく
+// なる原因になっていた。外部CDNは下のfetchイベント側で
+// 実際に読み込まれたタイミングで自動的にキャッシュする。
 const APP_SHELL = [
   './',
   './index.html',
@@ -7,16 +15,23 @@ const APP_SHELL = [
   './icon-512.png',
   './icon-512-maskable.png',
   './apple-touch-icon.png',
-  './favicon-32.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
+  './favicon-32.png'
 ];
 
-// インストール時にアプリ本体（HTML/アイコン/three.js）をキャッシュしておく
+// インストール時にアプリ本体（HTML/アイコン）をキャッシュしておく。
+// 1ファイルごとに個別にcatchすることで、万が一どれか1つの取得に
+// 失敗してもService Worker全体のインストールが失敗しないようにする。
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => {
+      return Promise.all(
+        APP_SHELL.map((url) =>
+          cache.add(url).catch((err) => {
+            console.warn('[service-worker] precache failed:', url, err);
+          })
+        )
+      );
+    }).then(() => self.skipWaiting())
   );
 });
 
@@ -30,7 +45,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // キャッシュ優先、キャッシュになければネットワークから取得して追加キャッシュ
-// （オフラインでも一度起動していれば遊べるようにする）
+// （three.js CDNなどの外部リソースもここで初回アクセス時にキャッシュされる）
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -39,7 +54,7 @@ self.addEventListener('fetch', (event) => {
       if (cached) return cached;
 
       return fetch(event.request).then((response) => {
-        if (response && response.status === 200) {
+        if (response && (response.status === 200 || response.type === 'opaque')) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }

@@ -2734,8 +2734,10 @@
     // PWA: Service Workerを登録（file://での直接閲覧時やサポート外環境ではスキップ）
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js').catch(() => {
-          // 登録に失敗してもゲーム自体は通常どおり遊べる
+        navigator.serviceWorker.register('service-worker.js').catch((err) => {
+          // 登録に失敗してもゲーム自体は通常どおり遊べるが、
+          // 原因調査ができるようコンソールには残しておく
+          console.warn('[PWA] service worker registration failed:', err);
         });
       });
     }

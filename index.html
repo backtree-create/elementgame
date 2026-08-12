@@ -2254,7 +2254,18 @@
 
         const border = STAGE_BORDERS[state.stage - 1];
         const cleared = (p1RoundPts >= border);
-
+if (window.manabiReport) {
+          window.manabiReport({
+            app: "elementgame",
+            done: cleared ? state.stage : state.stage - 1,
+            total: state.maxStages,
+            best: Math.min(100, Math.round(state.scores[1] / 910 * 100)),
+            note: cleared
+              ? `STAGE ${state.stage} クリア（累計 ${state.scores[1]}pt）`
+              : `STAGE ${state.stage} で失敗（累計 ${state.scores[1]}pt）`
+          });
+        }
+        
         document.getElementById('res-title-p1').innerText = `STAGE ${state.stage} 得点`;
         scoreP1.innerText = `+${p1RoundPts} pt`;
         totalP1.innerText = `目標: ${border}pt | 累計: ${state.scores[1]}pt`;

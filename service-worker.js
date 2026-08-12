@@ -1,4 +1,4 @@
-const CACHE_NAME = 'element-master-3d-v4'; // addAllの全滅バグを修正したためバージョンを上げる
+const CACHE_NAME = 'element-master-3d-v5'; // addAllの全滅バグを修正したためバージョンを上げる
 
 // 事前キャッシュするのは「同一オリジン（自分のリポジトリ内）」のファイルのみに限定する。
 // three.js のような外部CDNのURLをここに混ぜると、cache.addAll() は

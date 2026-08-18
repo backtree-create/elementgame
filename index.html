@@ -2259,7 +2259,7 @@ if (window.manabiReport) {
             app: "elementgame",
             done: cleared ? state.stage : state.stage - 1,
             total: state.maxStages,
-            best: Math.min(100, Math.round(state.scores[1] / 910 * 100)),
+            best: state.scores[1],
             note: cleared
               ? `STAGE ${state.stage} クリア（累計 ${state.scores[1]}pt）`
               : `STAGE ${state.stage} で失敗（累計 ${state.scores[1]}pt）`

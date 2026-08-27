@@ -2134,9 +2134,7 @@
       if (el) el.innerText = `${hs} pt`;
     }
 
-       function checkAndSaveHighScore(score) {
-      /* ここから追加 ------------------------------------------ */
-      try {
+     
 function checkAndSaveHighScore(score) {
   try {
     if (window.LearnHub && typeof LearnHub.report === 'function') {

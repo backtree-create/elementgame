@@ -1187,6 +1187,9 @@
       .scoreboard { font-size: 0.9rem; gap: 10px; }
     }
   </style>
+  <script src="https://backtree-create.github.io/ManabiBox/config.js"></script>
+　<script src="https://backtree-create.github.io/ManabiBox/hub-progress.js"></script>
+　<script src="https://backtree-create.github.io/ManabiBox/manabi-connect.js"></script>
 </head>
 <body>
 
@@ -2131,7 +2134,18 @@
       if (el) el.innerText = `${hs} pt`;
     }
 
-    function checkAndSaveHighScore(score) {
+       function checkAndSaveHighScore(score) {
+      /* ここから追加 ------------------------------------------ */
+      try {
+        if (window.manabiReport) window.manabiReport({
+          app: 'elementgame',
+          done: Math.min(10, (state && state.stage) || 0),
+          total: 10,
+          best: score,
+          note: 'スコアアタック STAGE' + ((state && state.stage) || 0)
+        });
+      } catch (e) {}
+      /* ここまで追加 ------------------------------------------ */
       const hs = getHighScore();
       if (score > hs) {
         localStorage.setItem('element_master_highscore', score.toString());

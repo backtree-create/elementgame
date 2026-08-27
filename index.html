@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <script src="https://backtree-create.github.io/ManabiBox/config.js"></script>
-  <script src="https://backtree-create.github.io/ManabiBox/hub-progress.js"></script>
-  <script src="https://backtree-create.github.io/ManabiBox/manabi-connect.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>化学モデル対戦ゲーム - エレメントマスター3D</title>
@@ -22,6 +19,8 @@
 
   <!-- Three.js CDN (3D粒子モデル描画用) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS CDN（別端末同士のオンライン対戦用。アカウント登録不要の無料公開シグナリングサーバーを利用したP2P通信） -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     :root {
       --p1-color: #2980b9;
@@ -308,6 +307,61 @@
       color: #64748b;
       line-height: 1.5;
     }
+
+    /* オンライン対戦タブ: 選択カード（部屋を作る／参加する）と接続状態表示 */
+    .online-choice-card {
+      border: 4px solid #cbd5e0;
+      border-radius: 18px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f8fafc;
+    }
+    .online-choice-card:hover {
+      border-color: #3498db;
+      transform: translateY(-3px) scale(1.015);
+      box-shadow: 0 10px 20px rgba(52, 152, 219, 0.18);
+    }
+    .online-choice-card.selected {
+      border-color: #16a085;
+      background: #e8f8f4;
+      box-shadow: 0 6px 16px rgba(22, 160, 133, 0.25);
+    }
+    .online-choice-card h3 {
+      font-size: 1.2rem;
+      margin-bottom: 8px;
+      color: #2c3e50;
+    }
+    .online-choice-card p {
+      font-size: 0.88rem;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    @keyframes onlineDotPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .online-conn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 14px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .online-conn-badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .online-conn-badge.connected { background: rgba(46, 204, 113, 0.18); color: #2ecc71; }
+    .online-conn-badge.waiting { background: rgba(241, 196, 15, 0.18); color: #f1c40f; }
+    .online-conn-badge.waiting .dot { animation: onlineDotPulse 1s ease-in-out infinite; }
+    .online-conn-badge.disconnected { background: rgba(231, 76, 60, 0.18); color: #ff6b6b; }
 
     /* 組み合わせ一覧（レシピ）スタイル */
     .recipe-filter-bar {
@@ -1162,28 +1216,65 @@
 
     <!-- ホーム画面のタブ切り替え -->
     <div class="tab-nav">
-      <button class="tab-btn active" onclick="switchHomeTab('start-tab')">2人対戦モード</button>
+      <button class="tab-btn active" onclick="switchHomeTab('online-tab')">オンライン対戦</button>
       <button class="tab-btn" onclick="switchHomeTab('score-tab')">スコアアタック</button>
       <button class="tab-btn" onclick="switchHomeTab('recipes-tab')">組み合わせ一覧</button>
     </div>
 
-    <!-- タブ1: ゲームスタート & 難易度設定 -->
-    <div id="start-tab" class="tab-content active">
-      <h2 style="margin-bottom: 15px; font-size: 1.3rem;">対戦難易度を選択してください</h2>
-      
-      <div class="difficulty-select-container">
-        <div class="difficulty-card selected" id="card-easy" onclick="selectDifficulty('easy')">
-          <h3>[かんたん]</h3>
-          <p><strong>原子・単体モデルのみ</strong>が登場します。<br>水（H2O）や二酸化炭素（CO2）など基本分子を中心とした初心者向けモードです。</p>
+    <!-- タブ1: オンライン対戦（別端末同士でのP2P対戦） -->
+    <div id="online-tab" class="tab-content active">
+      <h2 style="margin-bottom: 10px; font-size: 1.3rem;">オンライン対戦（別端末同士）</h2>
+      <p style="margin-bottom: 15px; color: #555; line-height: 1.6;">
+        アカウント登録不要で、2台の端末を直接つないで対戦します（P2P通信）。<br>
+        片方が「部屋を作る」で表示されるコードを、もう片方に伝えて「合言葉で参加」してください。<br>
+        <span style="color:#e67e22; font-weight:bold;">※通信環境によっては接続できない場合があります（学校や会社のWi-Fiなど）。</span>
+      </p>
+
+      <div id="online-setup-area">
+        <div class="difficulty-select-container" style="margin-bottom: 15px;">
+          <div class="online-choice-card" id="online-choice-create" onclick="selectOnlineChoice('create')">
+            <h3>部屋を作る</h3>
+            <p>コードが発行されます。相手にそのコードを伝えてください（あなたが Player 1 になります）。</p>
+          </div>
+          <div class="online-choice-card" id="online-choice-join" onclick="selectOnlineChoice('join')">
+            <h3>合言葉で参加する</h3>
+            <p>相手から伝えられたコードを入力して参加します（あなたが Player 2 になります）。</p>
+          </div>
         </div>
-        <div class="difficulty-card" id="card-hard" onclick="selectDifficulty('hard')">
-          <h3>[むずかしい]</h3>
-          <p><strong>イオン・多原子イオンのみ</strong>が登場します！<br>塩化ナトリウム（NaCl）や硫酸（H2SO4）など本格的な化学塩・イオン化合物の合成に挑戦できます。</p>
+
+        <div id="online-join-input-area" style="display:none; text-align:center; margin-bottom:15px;">
+          <input type="text" id="online-room-code-input" maxlength="5" placeholder="コードを入力 (例: A3F9K)"
+            style="font-size:1.3rem; letter-spacing:3px; text-align:center; text-transform:uppercase; padding:12px 16px; border-radius:12px; border:2px solid #cbd5e0; width:220px; max-width:80%;">
+        </div>
+
+        <div style="text-align: center;">
+          <button class="btn btn-info" id="online-action-btn" style="font-size: 1.2rem; padding: 14px 40px; border-radius: 30px;" onclick="onlineActionButtonClick()" disabled>作成 / 参加 の方法を選んでください</button>
         </div>
       </div>
 
-      <div style="text-align: center;">
-        <button class="btn btn-success" style="font-size: 1.5rem; padding: 16px 50px; border-radius: 35px;" onclick="startGame('vs')">対戦スタート</button>
+      <div id="online-status-area" style="display:none; text-align:center; margin-top:20px;">
+        <div id="online-status-code" style="font-size:2.2rem; font-weight:900; letter-spacing:6px; color:#2980b9; margin-bottom:8px;"></div>
+        <div id="online-status-text" style="font-size:1.05rem; color:#555; font-weight:bold;"></div>
+        <div style="margin-top:15px;">
+          <button class="btn btn-secondary" onclick="cancelOnlineConnection()">やめる</button>
+        </div>
+      </div>
+
+      <div id="online-ready-area" style="display:none;">
+        <h2 style="margin: 20px 0 15px; font-size: 1.3rem; text-align:center;">対戦難易度を選択してください（ホストのみ設定できます）</h2>
+        <div class="difficulty-select-container">
+          <div class="difficulty-card selected" id="online-card-easy" onclick="selectOnlineDifficulty('easy')">
+            <h3>[かんたん]</h3>
+            <p><strong>原子・単体モデルのみ</strong>が登場します。</p>
+          </div>
+          <div class="difficulty-card" id="online-card-hard" onclick="selectOnlineDifficulty('hard')">
+            <h3>[むずかしい]</h3>
+            <p><strong>イオン・多原子イオンのみ</strong>が登場します！</p>
+          </div>
+        </div>
+        <div style="text-align: center;">
+          <button class="btn btn-success" id="online-start-btn" style="font-size: 1.5rem; padding: 16px 50px; border-radius: 35px;" onclick="startOnlineGame()">対戦スタート</button>
+        </div>
       </div>
     </div>
 
@@ -1223,6 +1314,9 @@
         <h2>粒子・イオンマスター 3D</h2>
         <div class="round-badge" id="round-display">ROUND 1 / 3</div>
         <div class="mode-badge" id="mode-display">モード: かんたん</div>
+        <div class="online-conn-badge connected" id="online-conn-badge" style="display:none;">
+          <span class="dot"></span><span id="online-conn-badge-text">接続中</span>
+        </div>
       </div>
       <div class="scoreboard">
         <div id="score-p1-box">P1: <span class="score-p1" id="score-p1">0</span> pt</div>
@@ -1266,7 +1360,7 @@
         <!-- Player 2 -->
         <div class="player-panel p2" id="panel-p2">
           <div class="panel-header">
-            <h3>Player 2</h3>
+            <h3 id="panel-p2-title">Player 2</h3>
             <button class="btn btn-battle" id="ready-p2-btn" onclick="toggleReady(2)" disabled>Battle</button>
           </div>
 
@@ -1669,6 +1763,279 @@
       maxDraftPicks: 24
     };
 
+    // ==================== オンライン対戦（別端末同士のP2P通信） ====================
+    // PeerJSの無料公開シグナリングサーバーを使い、アカウント登録なしで
+    // 2台の端末同士を直接WebRTCで接続する。サーバー側で状態を管理する仕組みは
+    // 持たないため、常に「ホスト（部屋を作った側 = Player 1）」を状態の正とし、
+    // ゲスト（Player 2）の操作は一旦ホストへ送って、ホストが適用した結果を
+    // 全体の状態としてゲストへ送り返す「ホスト権威モデル」を採用する。
+    let peer = null;
+    let netConn = null;
+    let onlineRole = null;       // 'host' | 'guest' | null（通常のホットシート対戦なら null）
+    let myPlayerNum = null;      // オンライン時、自分が担当するプレイヤー番号（1 または 2）
+    let onlineChoice = null;     // ホーム画面での選択中の項目 'create' | 'join'
+    let onlineDifficulty = 'easy';
+    const ONLINE_ID_PREFIX = 'emg3d-'; // 公開シグナリングサーバー上で他アプリのIDと衝突しないための接頭辞
+
+    function selectOnlineChoice(choice) {
+      onlineChoice = choice;
+      document.getElementById('online-choice-create').classList.toggle('selected', choice === 'create');
+      document.getElementById('online-choice-join').classList.toggle('selected', choice === 'join');
+      document.getElementById('online-join-input-area').style.display = (choice === 'join') ? 'block' : 'none';
+      const btn = document.getElementById('online-action-btn');
+      btn.disabled = false;
+      btn.innerText = (choice === 'create') ? '部屋を作る' : '合言葉で参加する';
+    }
+
+    function onlineActionButtonClick() {
+      if (onlineChoice === 'create') createOnlineRoom();
+      else if (onlineChoice === 'join') joinOnlineRoom();
+    }
+
+    function generateRoomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 見間違えやすい 0/O, 1/I は除外
+      let code = '';
+      for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      return code;
+    }
+
+    function showOnlineStatus(text, codeText) {
+      document.getElementById('online-setup-area').style.display = 'none';
+      document.getElementById('online-status-area').style.display = 'block';
+      document.getElementById('online-ready-area').style.display = 'none';
+      document.getElementById('online-status-text').innerText = text;
+      document.getElementById('online-status-code').innerText = codeText || '';
+    }
+
+    function resetOnlineLobbyUI() {
+      onlineChoice = null;
+      const setupArea = document.getElementById('online-setup-area');
+      const statusArea = document.getElementById('online-status-area');
+      const readyArea = document.getElementById('online-ready-area');
+      const joinInput = document.getElementById('online-join-input-area');
+      const actionBtn = document.getElementById('online-action-btn');
+      const codeInput = document.getElementById('online-room-code-input');
+      if (!setupArea) return; // まだDOM未生成の初回呼び出し対策
+      setupArea.style.display = 'block';
+      statusArea.style.display = 'none';
+      readyArea.style.display = 'none';
+      joinInput.style.display = 'none';
+      actionBtn.disabled = true;
+      actionBtn.innerText = '作成 / 参加 の方法を選んでください';
+      codeInput.value = '';
+      document.getElementById('online-choice-create').classList.remove('selected');
+      document.getElementById('online-choice-join').classList.remove('selected');
+      updateOnlineConnBadge(null);
+    }
+
+    function createOnlineRoom() {
+      if (typeof Peer === 'undefined') {
+        alert('通信ライブラリの読み込みに失敗しました。ネットワーク接続を確認してページを再読み込みしてください。');
+        return;
+      }
+      const code = generateRoomCode();
+      showOnlineStatus('接続準備中…', code);
+
+      onlineRole = 'host';
+      myPlayerNum = 1;
+      peer = new Peer(ONLINE_ID_PREFIX + code);
+
+      peer.on('open', () => {
+        showOnlineStatus('このコードを相手に伝え、「合言葉で参加」から入力してもらってください。相手の接続を待っています…', code);
+      });
+
+      peer.on('connection', (incoming) => {
+        if (netConn) { incoming.close(); return; } // 既に1人と接続済みなら以降の接続は拒否
+        netConn = incoming;
+        setupDataConnection();
+        netConn.on('open', () => {
+          showOnlineStatus('', code);
+          document.getElementById('online-status-area').style.display = 'none';
+          document.getElementById('online-ready-area').style.display = 'block';
+        });
+      });
+
+      peer.on('error', (err) => {
+        console.warn('[online] peer error:', err);
+        const reason = (err && err.type === 'unavailable-id') ? 'コードが競合しました。もう一度お試しください。' : '接続に失敗しました。時間をおいて再度お試しください。';
+        showOnlineStatus(reason, '');
+      });
+    }
+
+    function joinOnlineRoom() {
+      if (typeof Peer === 'undefined') {
+        alert('通信ライブラリの読み込みに失敗しました。ネットワーク接続を確認してページを再読み込みしてください。');
+        return;
+      }
+      const codeInput = document.getElementById('online-room-code-input');
+      const code = (codeInput.value || '').trim().toUpperCase();
+      if (code.length < 4) {
+        alert('コードを正しく入力してください。');
+        return;
+      }
+      showOnlineStatus('接続中…', code);
+
+      onlineRole = 'guest';
+      myPlayerNum = 2;
+      peer = new Peer();
+
+      peer.on('open', () => {
+        netConn = peer.connect(ONLINE_ID_PREFIX + code, { reliable: true });
+        setupDataConnection();
+        netConn.on('open', () => {
+          showOnlineStatus('ホストと接続しました！ホストが難易度を選んで対戦を開始するのをお待ちください…', code);
+        });
+      });
+
+      peer.on('error', (err) => {
+        console.warn('[online] peer error:', err);
+        showOnlineStatus('接続できませんでした。コードを確認してもう一度お試しください。', '');
+      });
+    }
+
+    function setupDataConnection() {
+      netConn.on('data', handleNetMessage);
+      netConn.on('close', () => handleOpponentLeft());
+      netConn.on('error', (err) => console.warn('[online] connection error:', err));
+    }
+
+    function sendNet(msg) {
+      if (netConn && netConn.open) {
+        try { netConn.send(msg); } catch (e) { console.warn('[online] send failed:', e); }
+      }
+    }
+
+    function cancelOnlineConnection() {
+      teardownOnlineConnection();
+      resetOnlineLobbyUI();
+    }
+
+    function teardownOnlineConnection() {
+      if (netConn) { try { netConn.close(); } catch (e) {} netConn = null; }
+      if (peer) { try { peer.destroy(); } catch (e) {} peer = null; }
+      onlineRole = null;
+      myPlayerNum = null;
+      updateOnlineConnBadge(null);
+    }
+
+    function selectOnlineDifficulty(diff) {
+      if (onlineRole !== 'host') return;
+      onlineDifficulty = diff;
+      document.getElementById('online-card-easy').classList.toggle('selected', diff === 'easy');
+      document.getElementById('online-card-hard').classList.toggle('selected', diff === 'hard');
+    }
+
+    function startOnlineGame() {
+      if (onlineRole !== 'host') return;
+      state.difficulty = onlineDifficulty;
+      sendNet({ type: 'gameStart' });
+      startGame('vs');
+    }
+
+    function updateOnlineConnBadge(status) {
+      const badge = document.getElementById('online-conn-badge');
+      const text = document.getElementById('online-conn-badge-text');
+      if (!badge) return;
+      if (!status) { badge.style.display = 'none'; return; }
+      badge.style.display = 'inline-flex';
+      badge.className = 'online-conn-badge ' + status;
+      text.innerText = status === 'connected' ? 'オンライン対戦中' : (status === 'waiting' ? '接続中…' : '相手が切断しました');
+    }
+
+    function handleOpponentLeft() {
+      if (!onlineRole) return; // 既にホームに戻った後などは無視
+      updateOnlineConnBadge('disconnected');
+      alert('相手との接続が切れました。ホーム画面に戻ります。');
+      returnToHome();
+    }
+
+    // --- ネットワークメッセージの受信処理 ---
+    function handleNetMessage(msg) {
+      if (!msg || !msg.type) return;
+      switch (msg.type) {
+        case 'gameStart':
+          if (onlineRole === 'guest') startGame('vs'); // 直後にホストから届く'state'で実際の内容に更新される
+          break;
+        case 'state':
+          if (onlineRole === 'guest') applyRemoteState(msg.payload);
+          break;
+        case 'show3D': {
+          const r = RECIPES.find(x => x.id === msg.recipeId);
+          if (r) open3DModal(r);
+          break;
+        }
+        case 'intent':
+          if (onlineRole === 'host') applyRemoteIntent(msg);
+          break;
+      }
+    }
+
+    function applyRemoteIntent(msg) {
+      switch (msg.action) {
+        case 'handleBoxSelect': {
+          const model = state.boxPool.find(m => m.instanceId === msg.payload.instanceId);
+          if (!model) return;
+          const elem = document.querySelector(`.model-chip[data-instance-id="${msg.payload.instanceId}"]`);
+          if (elem) handleBoxSelect(model, elem, true);
+          break;
+        }
+        case 'moveToCraft': moveToCraft(msg.player, msg.payload.instanceId, true); break;
+        case 'moveToHand': moveToHand(msg.player, msg.payload.instanceId, true); break;
+        case 'craftChemical': craftChemical(msg.player, true); break;
+        case 'toggleReady': toggleReady(msg.player, true); break;
+        case 'proceedNextRound': proceedNextRound(true); break;
+        case 'proceedNextStage': proceedNextStage(true); break;
+      }
+    }
+
+    // 状態変化を起こすローカル操作の入口で使う共通ガード。
+    // 戻り値が true の場合のみ、呼び出し元はその場でローカルの処理を続行してよい。
+    function requestAction(player, actionName, payload, fromNetwork) {
+      if (!onlineRole) return true; // 通常のホットシート対戦は常に許可
+      if (fromNetwork) return (onlineRole === 'host'); // 受信した意図の適用はホストのみが行う
+      if (player !== myPlayerNum) return false; // 自分の担当ではないプレイヤーパネルの操作は無視
+      if (onlineRole === 'host') return true; // ホストはローカルでそのまま実行
+      sendNet({ type: 'intent', action: actionName, player, payload: payload || {} }); // ゲストはホストへ委譲
+      return false;
+    }
+
+    // ホストの状態をまるごとゲストへ送信する（Setはそのままだと送れないので配列に変換）
+    function broadcastState() {
+      if (onlineRole !== 'host') return;
+      const payload = { ...state, usedRecipeIds: Array.from(state.usedRecipeIds) };
+      sendNet({ type: 'state', payload });
+    }
+
+    // ゲスト側: ホストから届いた状態をそのまま自分の表示に反映する
+    function applyRemoteState(payload) {
+      const remote = { ...payload };
+      const usedIds = remote.usedRecipeIds || [];
+      delete remote.usedRecipeIds;
+      Object.assign(state, remote);
+      state.usedRecipeIds = new Set(usedIds);
+
+      document.getElementById('home-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'flex';
+      document.getElementById('global-home-btn').classList.add('show');
+      updateOnlineConnBadge('connected');
+
+      updateUI();
+      updateDraftHeader();
+      updateDraftHandView();
+
+      if (state.phase === 'DRAFT') {
+        openBoxModal();
+      } else {
+        closeModal('box-modal');
+      }
+
+      if (state.phase === 'SUMMARY') {
+        showRoundResultModal(true);
+      } else {
+        closeModal('result-modal');
+      }
+    }
+
     // 3D Three.js 変数（レンダラーはページ内で使い回し、WebGLコンテキストの枯渇を防ぐ）
     let scene3d, camera3d, renderer3d, animFrameId3d, molGroup3d;
     let prevScores = { 1: 0, 2: 0 };
@@ -1722,6 +2089,7 @@
       chip.className = `model-chip chip-${model.type}`;
       chip.style.backgroundColor = model.color || '#3498db';
       chip.setAttribute('tabindex', '0'); // フォーカス可能にする
+      if (model.instanceId) chip.dataset.instanceId = model.instanceId;
 
       // むずかしい または スコアアタック モード時の判定設定
       const isHideMode = (state.gameMode === 'scoreAttack' || state.difficulty === 'hard');
@@ -1797,12 +2165,6 @@
       document.getElementById(tabId).classList.add('active');
     }
 
-    function selectDifficulty(diff) {
-      state.difficulty = diff;
-      document.getElementById('card-easy').classList.toggle('selected', diff === 'easy');
-      document.getElementById('card-hard').classList.toggle('selected', diff === 'hard');
-    }
-
     function startGame(mode = 'vs') {
       resetGameData();
       state.gameMode = mode;
@@ -1824,13 +2186,16 @@
         board.classList.remove('single-player');
         panelP2.style.display = 'flex';
         scoreP2Box.style.display = 'block';
-        document.getElementById('panel-p1-title').innerText = "Player 1";
+        document.getElementById('panel-p1-title').innerText = onlineRole ? `Player 1${myPlayerNum === 1 ? ' (あなた)' : ''}` : "Player 1";
+        const p2TitleEl = document.getElementById('panel-p2-title');
+        if (p2TitleEl) p2TitleEl.innerText = onlineRole ? `Player 2${myPlayerNum === 2 ? ' (あなた)' : ''}` : "Player 2";
         document.getElementById('mode-display').innerText = `モード: ${state.difficulty === 'easy' ? 'かんたん (原子のみ)' : 'むずかしい (イオンのみ)'}`;
       }
 
       document.getElementById('home-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
       document.getElementById('global-home-btn').classList.add('show');
+      if (onlineRole) updateOnlineConnBadge('connected');
 
       startRound();
     }
@@ -1849,6 +2214,9 @@
       closeModal('confirm-modal');
       close3DModal();
       document.getElementById('draft-hand-panel').style.display = 'none';
+
+      teardownOnlineConnection();
+      resetOnlineLobbyUI();
 
       resetGameData();
       document.getElementById('game-screen').style.display = 'none';
@@ -1944,9 +2312,14 @@
       state.turnPlayer = (state.round % 2 === 1) ? 1 : 2;
 
       resetReadyButtons();
-      generateBoxPool();
+      // オンライン対戦のゲスト側は箱の中身を自分で生成せず、必ずホストからの同期を待つ
+      // （双方が別々にランダム生成すると内容がずれてしまうため）
+      if (onlineRole !== 'guest') {
+        generateBoxPool();
+      }
       updateUI();
       openBoxModal();
+      if (onlineRole === 'host') broadcastState();
     }
 
     function resetReadyButtons() {
@@ -2076,10 +2449,18 @@
       }
     }
 
-    function handleBoxSelect(model, sourceElem) {
+    function handleBoxSelect(model, sourceElem, fromNetwork) {
       if (state.phase !== 'DRAFT') return;
 
       const p = (state.gameMode === 'scoreAttack') ? 1 : state.turnPlayer;
+
+      if (onlineRole && !fromNetwork) {
+        if (p !== myPlayerNum) return; // 自分の番でなければ無視
+        if (onlineRole === 'guest') {
+          sendNet({ type: 'intent', action: 'handleBoxSelect', payload: { instanceId: model.instanceId } });
+          return;
+        }
+      }
 
       if (state.hands[p].length >= 12) {
         alert(`Player ${p} の手持ちモデルは上限の12個に達しています。`);
@@ -2113,8 +2494,11 @@
             document.getElementById('draft-hand-panel').style.display = 'none';
             state.phase = 'BUILD';
             updateUI();
+            if (onlineRole === 'host') broadcastState();
           }, 200);
         }
+
+        if (onlineRole === 'host') broadcastState();
       });
     }
 
@@ -2143,7 +2527,8 @@
       }, 400);
     }
 
-    function moveToCraft(player, instanceId) {
+    function moveToCraft(player, instanceId, fromNetwork) {
+      if (!requestAction(player, 'moveToCraft', { instanceId }, fromNetwork)) return;
       if (state.phase !== 'BUILD' || state.ready[player]) return;
       const idx = state.hands[player].findIndex(m => m.instanceId === instanceId);
       if (idx !== -1) {
@@ -2151,9 +2536,11 @@
         state.crafts[player].push(model);
         updatePlayerArea(player);
       }
+      if (onlineRole === 'host') broadcastState();
     }
 
-    function moveToHand(player, instanceId) {
+    function moveToHand(player, instanceId, fromNetwork) {
+      if (!requestAction(player, 'moveToHand', { instanceId }, fromNetwork)) return;
       if (state.phase !== 'BUILD' || state.ready[player]) return;
       const idx = state.crafts[player].findIndex(m => m.instanceId === instanceId);
       if (idx !== -1) {
@@ -2161,9 +2548,12 @@
         state.hands[player].push(model);
         updatePlayerArea(player);
       }
+      if (onlineRole === 'host') broadcastState();
     }
 
-    function craftChemical(player) {
+    function craftChemical(player, fromNetwork) {
+      if (!requestAction(player, 'craftChemical', {}, fromNetwork)) return;
+
       const recipe = checkRecipeMatch(state.crafts[player]);
       if (!recipe) return;
 
@@ -2184,6 +2574,10 @@
       updatePlayerArea(player);
 
       open3DModal(recipe);
+      if (onlineRole === 'host') {
+        sendNet({ type: 'show3D', recipeId: recipe.id }); // 相手の画面にも同じ3Dモデルを表示する
+        broadcastState();
+      }
     }
 
     function checkRecipeMatch(models) {
@@ -2206,7 +2600,8 @@
       return null;
     }
 
-    function toggleReady(player) {
+    function toggleReady(player, fromNetwork) {
+      if (!requestAction(player, 'toggleReady', {}, fromNetwork)) return;
       if (state.phase !== 'BUILD') return;
 
       if (state.gameMode === 'scoreAttack') {
@@ -2221,20 +2616,31 @@
 
       if (state.ready[1] && state.ready[2]) {
         showRoundResultModal();
+      } else if (onlineRole === 'host') {
+        broadcastState();
       }
     }
 
-    function showRoundResultModal() {
-      state.phase = 'SUMMARY';
+    function showRoundResultModal(fromNetwork) {
+      // スコア加算は「初めてこのラウンドを集計するとき」だけ行う。
+      // オンライン対戦のゲスト側は、ホストから届いた状態を表示に反映するためだけに
+      // この関数を呼ぶので、その場合は二重加算しないようスキップする。
+      if (!(onlineRole === 'guest' && fromNetwork)) {
+        state.phase = 'SUMMARY';
 
-      let p1RoundPts = 0, p2RoundPts = 0;
-      state.created[1].forEach(r => { p1RoundPts += r.score; state.usedRecipeIds.add(r.id); });
-      if (state.gameMode === 'vs') {
-        state.created[2].forEach(r => { p2RoundPts += r.score; state.usedRecipeIds.add(r.id); });
+        let p1RoundPts = 0, p2RoundPts = 0;
+        state.created[1].forEach(r => { p1RoundPts += r.score; state.usedRecipeIds.add(r.id); });
+        if (state.gameMode === 'vs') {
+          state.created[2].forEach(r => { p2RoundPts += r.score; state.usedRecipeIds.add(r.id); });
+        }
+
+        state.scores[1] += p1RoundPts;
+        state.scores[2] += p2RoundPts;
+        state.lastRoundPts = { 1: p1RoundPts, 2: p2RoundPts };
       }
 
-      state.scores[1] += p1RoundPts;
-      state.scores[2] += p2RoundPts;
+      const p1RoundPts = state.lastRoundPts ? state.lastRoundPts[1] : 0;
+      const p2RoundPts = state.lastRoundPts ? state.lastRoundPts[2] : 0;
 
       updateUI();
 
@@ -2254,18 +2660,7 @@
 
         const border = STAGE_BORDERS[state.stage - 1];
         const cleared = (p1RoundPts >= border);
-if (window.manabiReport) {
-          window.manabiReport({
-            app: "elementgame",
-            done: cleared ? state.stage : state.stage - 1,
-            total: state.maxStages,
-            best: state.scores[1],
-            note: cleared
-              ? `STAGE ${state.stage} クリア（累計 ${state.scores[1]}pt）`
-              : `STAGE ${state.stage} で失敗（累計 ${state.scores[1]}pt）`
-          });
-        }
-        
+
         document.getElementById('res-title-p1').innerText = `STAGE ${state.stage} 得点`;
         scoreP1.innerText = `+${p1RoundPts} pt`;
         totalP1.innerText = `目標: ${border}pt | 累計: ${state.scores[1]}pt`;
@@ -2346,15 +2741,24 @@ if (window.manabiReport) {
       }
 
       openModal('result-modal');
+      if (onlineRole === 'host' && !fromNetwork) broadcastState();
     }
 
-    function proceedNextRound() {
+    function proceedNextRound(fromNetwork) {
+      if (onlineRole === 'guest' && !fromNetwork) {
+        sendNet({ type: 'intent', action: 'proceedNextRound', player: myPlayerNum, payload: {} });
+        return;
+      }
       closeModal('result-modal');
       state.round++;
       startRound();
     }
 
-    function proceedNextStage() {
+    function proceedNextStage(fromNetwork) {
+      if (onlineRole === 'guest' && !fromNetwork) {
+        sendNet({ type: 'intent', action: 'proceedNextStage', player: myPlayerNum, payload: {} });
+        return;
+      }
       closeModal('result-modal');
       state.stage++;
       startRound();

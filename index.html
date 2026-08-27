@@ -2137,23 +2137,31 @@
        function checkAndSaveHighScore(score) {
       /* ここから追加 ------------------------------------------ */
       try {
-        if (window.manabiReport) window.manabiReport({
-          app: 'elementgame',
-          done: Math.min(10, (state && state.stage) || 0),
-          total: 10,
-          best: score,
-          note: 'スコアアタック STAGE' + ((state && state.stage) || 0)
-        });
-      } catch (e) {}
-      /* ここまで追加 ------------------------------------------ */
-      const hs = getHighScore();
-      if (score > hs) {
-        localStorage.setItem('element_master_highscore', score.toString());
-        updateHighScoreDisplay();
-        return true;
-      }
-      return false;
+function checkAndSaveHighScore(score) {
+  try {
+    if (window.LearnHub && typeof LearnHub.report === 'function') {
+      LearnHub.report({
+        app: 'elementgame',
+        done: Math.min(10, (state && state.stage) || 0),
+        total: 10,
+        best: score,
+        note: 'スコアアタック STAGE' + ((state && state.stage) || 0)
+      });
+    } else {
+      console.warn('[hub] LearnHub が読み込まれていません');
     }
+  } catch (e) {
+    console.warn('[hub] 送信に失敗:', e);
+  }
+
+  const hs = getHighScore();
+  if (score > hs) {
+    localStorage.setItem('element_master_highscore', score.toString());
+    updateHighScoreDisplay();
+    return true;
+  }
+  return false;
+}
 
     // データ完全初期化処理
     function resetGameData() {
